@@ -13,7 +13,10 @@ namespace fts_extension {
 
 struct FTSUtils {
 
-    static void normalizeQuery(std::string& query, const regex::RE2& ignorePattern);
+    // preserveWildcards: query path only. Document insert/update/delete must strip
+    // '*'/'?' the same way the CREATE tokenize macro does.
+    static void normalizeQuery(std::string& query, const regex::RE2& ignorePattern,
+        bool preserveWildcards = false);
 
     static bool hasWildcardPattern(const std::string& term);
 
@@ -59,6 +62,9 @@ struct FTSUtils {
     }
 
     static std::vector<std::string> tokenizeString(std::string& str, const FTSConfig& tokenizer);
+
+    // Escape `\` and `'` so the string can be embedded in a Cypher string literal.
+    static std::string escapeForCypher(const std::string& input);
 };
 
 } // namespace fts_extension

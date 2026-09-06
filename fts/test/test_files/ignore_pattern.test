@@ -1,0 +1,107 @@
+-DATASET CSV empty
+
+--
+
+# CREATE_FTS_INDEX honours ignore_pattern when building the index.
+# QUERY_FTS_INDEX must use the same pattern (digits, hyphens, punctuation).
+
+-CASE IgnorePatternQuerySide
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE T(id INT64, content STRING, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:T {id:1, content:'Audi A4 Avant 2022'}), (:T {id:2, content:'Volkswagen T-Roc Life'}), (:T {id:3, content:'Mazda 6'});
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', ignore_pattern := '[^[:alnum:]-]+');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 't-roc', top := 5) RETURN node.id;
+---- 1
+2
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', '6', top := 5) RETURN node.id;
+---- 1
+3
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'mazda 6', top := 5) RETURN node.id;
+---- 1
+3
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', '2022', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4!', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', '(6)', top := 5) RETURN node.id;
+---- 1
+3
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'a?', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 't?roc', top := 5) RETURN node.id;
+---- 1
+2
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', '202*', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL SHOW_INDEXES() WHERE table_name = 'T' AND index_name = 'idx' RETURN index_definition;
+---- 1
+CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', stopWords := 'default', ignore_pattern := '[^[:alnum:]-]+');
+
+-CASE DefaultIgnorePatternStillStripsDigits
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE T(id INT64, content STRING, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:T {id:1, content:'Audi A4 Avant 2022'}), (:T {id:2, content:'Mazda 6'});
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 0
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', '6', top := 5) RETURN node.id;
+---- 0
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'Audi', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'Audi!', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'Avant2022', top := 5) RETURN node.id;
+---- 1
+1
+
+-CASE IncrementalStarInDocument
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE T(id INT64, content STRING, PRIMARY KEY(id));
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none');
+---- ok
+-STATEMENT CREATE (:T {id:1, content:'foo*bar'});
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'foo', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'bar', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT MATCH (t:T) WHERE t.id = 1 DELETE t;
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'foo', top := 5) RETURN node.id;
+---- 0
+
+-CASE RecreateWithDifferentIgnorePattern
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE T(id INT64, content STRING, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:T {id:1, content:'Audi A4 Avant 2022'});
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 0
+-STATEMENT CALL DROP_FTS_INDEX('T', 'idx');
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', ignore_pattern := '[^[:alnum:]-]+');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 1
+1

@@ -72,12 +72,19 @@ std::string FTSIndexAuxInfo::toCypher(const catalog::IndexCatalogEntry& indexEnt
                 i == propertyIDs.size() - 1 ? "" : ", ");
     }
 
-    cypher += std::format("CALL CREATE_FTS_INDEX('{}', '{}', [{}], stemmer := '{}', "
-                          "stopWords := '{}');",
-        tableName, indexEntry.getIndexName(), std::move(propertyStr), config.stemmer,
+    std::string optionalParams = std::format("stemmer := '{}', stopWords := '{}'", config.stemmer,
         stopWordsIsTable(config, indexToCypherInfo.context) ?
             config.stopWordsSource :
             getStopWordsName(indexToCypherInfo.exportFileInfo));
+    if (config.ignorePattern != IgnorePattern::DEFAULT_VALUE) {
+        optionalParams += std::format(", ignore_pattern := '{}'",
+            FTSUtils::escapeForCypher(config.ignorePattern));
+    }
+    if (!config.tokenizer.empty() && config.tokenizer != Tokenizer::DEFAULT_VALUE) {
+        optionalParams += std::format(", tokenizer := '{}'", config.tokenizer);
+    }
+    cypher += std::format("CALL CREATE_FTS_INDEX('{}', '{}', [{}], {});", tableName,
+        indexEntry.getIndexName(), std::move(propertyStr), optionalParams);
     return cypher;
 }
 

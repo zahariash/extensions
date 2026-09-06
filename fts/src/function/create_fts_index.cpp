@@ -3,6 +3,7 @@
 #include "binder/expression/literal_expression.h"
 #include "catalog/fts_index_catalog_entry.h"
 #include "common/exception/binder.h"
+#include "common/string_utils.h"
 #include "common/types/value/nested.h"
 #include "function/fts_bind_data.h"
 #include "function/fts_config.h"
@@ -133,17 +134,6 @@ static std::string createStopWordsTable([[maybe_unused]] const ClientContext& co
     return query;
 }
 
-static std::string formatStrInCypher(const std::string& input) {
-    std::string result;
-    for (char c : input) {
-        if (c == '\\' || c == '\'') {
-            result += '\\';
-        }
-        result += c;
-    }
-    return result;
-}
-
 std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData& bindData) {
     auto ftsBindData = bindData.constPtrCast<CreateFTSBindData>();
     auto tableID = ftsBindData->tableID;
@@ -153,18 +143,20 @@ std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData&
     context.setUseInternalCatalogEntry(true /* useInternalCatalogEntry */);
     // TODO(Ziyi): Copy statement can't be wrapped in manual transaction, so we can't wrap all
     // statements in a single transaction there.
-    // Create the tokenize macro.
+    // Create the tokenize macro. Replace an existing one so DROP + CREATE with a
+    // different ignore_pattern cannot reuse a stale macro. Do not DROP MACRO in
+    // DROP_FTS_INDEX: that WAL record does not recover (macro oid 0).
     std::string query = "";
-    if (!catalog::Catalog::Get(context)->containsMacro(transaction::Transaction::Get(context),
-            FTSUtils::getTokenizeMacroName(tableID, indexName))) {
-        // TOKENIZE(text, tokenizer, extra_param)
-        query += std::format(R"(CREATE MACRO `{}`(query) AS
-                            TOKENIZE(lower(regexp_replace(CAST(query as STRING), '{}', ' ', 'g')), '{}', '{}');)",
-            FTSUtils::getTokenizeMacroName(tableID, indexName),
-            formatStrInCypher(ftsBindData->createFTSConfig.ignorePattern),
-            ftsBindData->createFTSConfig.tokenizerInfo.tokenizer,
-            ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir);
+    auto tokenizeMacroName = FTSUtils::getTokenizeMacroName(tableID, indexName);
+    if (catalog::Catalog::Get(context)->containsMacro(transaction::Transaction::Get(context),
+            StringUtils::getUpper(tokenizeMacroName))) {
+        query += std::format("DROP MACRO `{}`;", tokenizeMacroName);
     }
+    query += std::format(R"(CREATE MACRO `{}`(query) AS
+                            TOKENIZE(lower(regexp_replace(CAST(query as STRING), '{}', ' ', 'g')), '{}', '{}');)",
+        tokenizeMacroName, FTSUtils::escapeForCypher(ftsBindData->createFTSConfig.ignorePattern),
+        ftsBindData->createFTSConfig.tokenizerInfo.tokenizer,
+        ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir);
 
     // Create the stop words table if not exists, or the user is not using the default english
     // one.
@@ -235,8 +227,10 @@ std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData&
     properties += "]";
     std::string params;
     params += std::format("stemmer := '{}', ", ftsBindData->createFTSConfig.stemmer);
-    params +=
-        std::format("stopWords := '{}'", ftsBindData->createFTSConfig.stopWordsTableInfo.stopWords);
+    params += std::format("stopWords := '{}', ",
+        FTSUtils::escapeForCypher(ftsBindData->createFTSConfig.stopWordsTableInfo.stopWords));
+    params += std::format("ignore_pattern := '{}'",
+        FTSUtils::escapeForCypher(ftsBindData->createFTSConfig.ignorePattern));
     query += std::format("CALL _CREATE_FTS_INDEX('{}', '{}', {}, {});", tableName, indexName,
         properties, params);
     query += std::format("RETURN 'Index {} has been created.' as result;", ftsBindData->indexName);
