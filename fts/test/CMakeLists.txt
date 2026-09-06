@@ -1,4 +1,6 @@
 if (${BUILD_EXTENSION_TESTS})
     add_lbug_test(fts_prepare_test prepare_test.cpp)
     add_lbug_test(fts_read_only_test read_only_test.cpp)
+    add_lbug_test(fts_utils_test fts_utils_test.cpp)
+    target_link_libraries(fts_utils_test PRIVATE lbug_fts_normalize re2)
 endif ()

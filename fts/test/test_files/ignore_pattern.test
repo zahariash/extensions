@@ -105,3 +105,25 @@ CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', stopWords := '
 -STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
 ---- 1
 1
+
+-CASE IgnorePatternEscapeRoundTrip
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE T(id INT64, content STRING, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE (:T {id:1, content:'Audi A4 Avant 2022'});
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', ignore_pattern := '[\'\\\\]+');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 1
+1
+-STATEMENT CALL SHOW_INDEXES() WHERE table_name = 'T' AND index_name = 'idx' RETURN index_definition;
+---- 1
+CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', stopWords := 'default', ignore_pattern := '[\'\\\\]+');
+-STATEMENT CALL DROP_FTS_INDEX('T', 'idx');
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('T', 'idx', ['content'], stemmer := 'none', stopWords := 'default', ignore_pattern := '[\'\\\\]+');
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('T', 'idx', 'A4', top := 5) RETURN node.id;
+---- 1
+1

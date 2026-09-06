@@ -9,7 +9,6 @@ include_directories(
 add_subdirectory(src/catalog)
 add_subdirectory(src/function)
 add_subdirectory(src/main)
-add_subdirectory(test)
 add_subdirectory(src/index)
 add_subdirectory(src/utils)
 
@@ -28,3 +27,5 @@ add_custom_command(TARGET lbug_${EXTENSION_LIB_NAME}_extension POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/third_party/cppjieba/dict
         ${PROJECT_SOURCE_DIR}/extension/fts/build/dict)
+
+add_subdirectory(test)
