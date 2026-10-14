@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_map>
 
+#include "catalog/catalog.h"
 #include "common/string_utils.h"
 #include "cppjieba/Jieba.hpp"
 #include "function/stem.h"
@@ -178,6 +179,22 @@ std::vector<std::string> FTSUtils::tokenizeString(std::string& str, const FTSCon
         terms = StringUtils::split(str, " ", true /* ignoreEmptyStringParts */);
     }
     return terms;
+}
+
+bool FTSUtils::containsInternalTable(const main::ClientContext& context, const std::string& name) {
+    auto catalog = Catalog::Get(context);
+    auto transaction = Transaction::Get(context);
+    return catalog->containsTable(transaction, name, true /* useInternal */) &&
+           !catalog->containsTable(transaction, name, false /* useInternal */);
+}
+
+std::string FTSUtils::dropTokenizeMacroQuery(const main::ClientContext& context,
+    common::table_id_t tableID, const std::string& indexName) {
+    auto macroName = getTokenizeMacroName(tableID, indexName);
+    if (!Catalog::Get(context)->containsMacro(Transaction::Get(context), macroName)) {
+        return "";
+    }
+    return std::format("DROP MACRO `{}`;", macroName);
 }
 
 } // namespace fts_extension

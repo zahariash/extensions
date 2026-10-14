@@ -99,7 +99,16 @@ static std::unique_ptr<TableFuncBindData> bindFunc(ClientContext* context,
         std::move(createFTSConfig));
 }
 
-static std::string createStopWordsTable([[maybe_unused]] const ClientContext& context,
+// The per-index copy may be left over from an index of the same name dropped by an earlier
+// version.
+static std::string dropLeftoverStopWordsTable(const ClientContext& context,
+    const std::string& tableName) {
+    return FTSUtils::containsInternalTable(context, tableName) ?
+               std::format("DROP TABLE `{}`;", tableName) :
+               "";
+}
+
+static std::string createStopWordsTable(const ClientContext& context,
     const StopWordsTableInfo& info) {
     std::string query = "";
     switch (info.source) {
@@ -117,12 +126,14 @@ static std::string createStopWordsTable([[maybe_unused]] const ClientContext& co
             info.tableName);
     } break;
     case StopWordsSource::TABLE: {
+        query += dropLeftoverStopWordsTable(context, info.tableName);
         query +=
             std::format("CREATE NODE TABLE `{}` (sw STRING, PRIMARY KEY(sw));", info.tableName);
         query += std::format("COPY `{}` FROM (MATCH (c:`{}`) RETURN c.*);", info.tableName,
             info.stopWords);
     } break;
     case StopWordsSource::FILE: {
+        query += dropLeftoverStopWordsTable(context, info.tableName);
         query +=
             std::format("CREATE NODE TABLE `{}` (sw STRING, PRIMARY KEY(sw));", info.tableName);
         query += std::format("COPY `{}` FROM '{}';", info.tableName, info.stopWords);
@@ -153,18 +164,17 @@ std::string createFTSIndexQuery(ClientContext& context, const TableFuncBindData&
     context.setUseInternalCatalogEntry(true /* useInternalCatalogEntry */);
     // TODO(Ziyi): Copy statement can't be wrapped in manual transaction, so we can't wrap all
     // statements in a single transaction there.
-    // Create the tokenize macro.
-    std::string query = "";
-    if (!catalog::Catalog::Get(context)->containsMacro(transaction::Transaction::Get(context),
-            FTSUtils::getTokenizeMacroName(tableID, indexName))) {
-        // TOKENIZE(text, tokenizer, extra_param)
-        query += std::format(R"(CREATE MACRO `{}`(query) AS
+    // An existing tokenize macro comes from IMPORT DATABASE or from an index of the same name
+    // dropped by an earlier version; it is replaced so the bulk build tokenizes with this index's
+    // options.
+    std::string query = FTSUtils::dropTokenizeMacroQuery(context, tableID, indexName);
+    // TOKENIZE(text, tokenizer, extra_param)
+    query += std::format(R"(CREATE MACRO `{}`(query) AS
                             TOKENIZE(lower(regexp_replace(CAST(query as STRING), '{}', ' ', 'g')), '{}', '{}');)",
-            FTSUtils::getTokenizeMacroName(tableID, indexName),
-            formatStrInCypher(ftsBindData->createFTSConfig.ignorePattern),
-            ftsBindData->createFTSConfig.tokenizerInfo.tokenizer,
-            ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir);
-    }
+        FTSUtils::getTokenizeMacroName(tableID, indexName),
+        formatStrInCypher(ftsBindData->createFTSConfig.ignorePattern),
+        ftsBindData->createFTSConfig.tokenizerInfo.tokenizer,
+        ftsBindData->createFTSConfig.tokenizerInfo.jiebaDictDir);
 
     // Create the stop words table if not exists, or the user is not using the default english
     // one.

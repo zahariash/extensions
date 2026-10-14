@@ -40,6 +40,14 @@ std::string dropFTSIndexQuery(ClientContext& context, const TableFuncBindData& b
         FTSUtils::getDocsTableName(ftsBindData->tableID, ftsBindData->indexName));
     query += std::format("DROP TABLE `{}`;",
         FTSUtils::getTermsTableName(ftsBindData->tableID, ftsBindData->indexName));
+    auto stopWordsTableName =
+        FTSUtils::getNonDefaultStopWordsTableName(ftsBindData->tableID, ftsBindData->indexName);
+    if (FTSUtils::containsInternalTable(context, stopWordsTableName)) {
+        query += std::format("DROP TABLE `{}`;", stopWordsTableName);
+    }
+    query +=
+        FTSUtils::dropTokenizeMacroQuery(context, ftsBindData->tableID, ftsBindData->indexName);
+    query += std::format("RETURN 'Index {} has been dropped.' as result;", ftsBindData->indexName);
     return query;
 }
 
