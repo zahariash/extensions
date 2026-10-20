@@ -69,8 +69,8 @@ struct FTSUtils {
 
     static std::vector<std::string> tokenizeString(std::string& str, const FTSConfig& tokenizer);
 
-    // DROP MACRO IF EXISTS throws when the macro is missing, so the statement is only emitted for
-    // an existing macro.
+    // Returns a DROP MACRO statement for the index's tokenize macro, or an empty string if it has
+    // none.
     static std::string dropTokenizeMacroQuery(const main::ClientContext& context,
         common::table_id_t tableID, const std::string& indexName);
 

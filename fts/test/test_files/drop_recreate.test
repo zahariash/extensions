@@ -111,3 +111,25 @@ Index idx has been dropped.
 -STATEMENT CALL QUERY_FTS_INDEX('Doc', 'idx', '12345') RETURN node.id;
 ---- 1
 1
+
+# An index whose name has a lowercase non-ASCII letter drops its tokenize macro too, so it can be
+# created again.
+-CASE RecreateNonAsciiName
+-LOAD_DYNAMIC_EXTENSION fts
+-STATEMENT CREATE NODE TABLE Doc(id INT64 PRIMARY KEY, body STRING);
+---- ok
+-STATEMENT CREATE (:Doc {id: 1, body: 'order shipped'});
+---- ok
+-STATEMENT CALL CREATE_FTS_INDEX('Doc', 'café', ['body']);
+---- ok
+-STATEMENT CALL DROP_FTS_INDEX('Doc', 'café');
+---- 1
+Index café has been dropped.
+-STATEMENT CALL SHOW_MACROS() RETURN count(*);
+---- 1
+0
+-STATEMENT CALL CREATE_FTS_INDEX('Doc', 'café', ['body']);
+---- ok
+-STATEMENT CALL QUERY_FTS_INDEX('Doc', 'café', 'shipped') RETURN node.id;
+---- 1
+1
